@@ -1,0 +1,143 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>cc-client</title>
+<script src="libs/d3/d3.min.js"></script>
+<script src="price-plot.js"></script>
+<script src="vol-plot.js"></script>
+<script src="interval-list.js"></script>
+<script src="data.js"></script>
+<link rel="stylesheet" href="plot.css"/>
+<body>
+  <h1>BTC-E BTC/USD</h1>
+<script>
+
+var plotData = getPlotData();
+
+var margin = {top: 10, right: 50, bottom: 10, left: 10, between: 40}
+	   ,width = 960 - margin.left - margin.right
+	   ,height = 300 - margin.top - margin.bottom
+	   ,htop = (height-margin.between) * 0.85
+	   ,hbottom = (height-margin.between) * 0.15;
+
+initializePlots();
+
+function initializePlots() {
+	var els = d3.select('body').selectAll("div.plot")
+	   					 .data(plotData);
+	var row = els.enter()
+	   .append('div')
+	   .classed('plot', true);
+	var left = row.append('div')
+	  .classed('left-col', true);
+	left.append('h2')
+	  .text(function(d) { return d.label });
+	var right = row.append('div')
+	  .classed('right-col', true);
+	var svg = right.append('svg')
+	  .attr({width: '100%', height: height});
+	svg.append('g')
+	  .classed('price-plot', true)
+	  .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+	svg.append('g')
+	  .classed('volume-plot', true)
+ 	  .attr("transform", "translate(" + margin.left + "," + (margin.top + htop + margin.between) + ")");
+}
+
+// function loadAllData() {
+// 	plotData.forEach(function(data) {
+
+// 	});
+// 	ex_pairs.forEach(function(expair) { expair.loaded = false });
+// 	ex_pairs.forEach(function(expair) { loadData({
+// 		ex: expair.ex
+// 	, pair: expair.pair
+// 	, group_by: expair.group_by
+// 	, time: expair.time
+//   }, expair, collectData)});
+// }
+
+// createSVG();
+
+// var initialized_plots = false;
+
+// function loadAllData() {
+// 	ex_pairs.forEach(function(expair) { expair.loaded = false });
+// 	ex_pairs.forEach(function(expair) { loadData({
+// 		ex: expair.ex
+// 	, pair: expair.pair
+// 	, group_by: expair.group_by
+// 	, time: expair.time
+//   }, expair, collectData)});
+// }
+
+// setInterval(function() {
+// 	console.log('loading all data...');
+// 	loadAllData();
+// }, 50000);
+// loadAllData();
+
+// function collectData(data, expair) {
+// 	expair.data = expair.data.concat(data);
+// 	expair.time = expair.data[expair.data.length-1].time_end;
+// 	expair.loaded = true;
+// 	if (ex_pairs.every(function(expair) { return expair.loaded })) showData();
+// }
+
+// function showData() {
+//   var datas = ex_pairs.map(function(expair) { return expair.data });
+
+// 	if (initialized_plots) {
+// 		x.domain([new Date() - 6*60*60*1000, new Date()]);
+// 		pp.updateAll(datas);
+// 		vp.updateAll(datas);
+// 		return;
+// 	}
+
+// 	loading_text.transition()
+//     .duration(500)
+//     .style('opacity', 0.00001)
+//     .remove();
+
+
+//   datas.forEach(function(data) {
+// 	  for (var i=0; i<data.length; i++) {
+// 	    data[i].time_start = new Date(data[i].time_start);
+// 	    data[i].time_end = new Date(data[i].time_end);
+// 	  }
+// 	});
+
+// 	x = d3.time.scale()
+//         .range([8,width-8])
+//         .domain([new Date() - 6*60*60*1000, new Date()]);
+
+//   var color = d3.scale.category10();
+
+//   pp = PricePlot().show_vwap(true).show_candles(false);
+//   pp(g_top, datas, x, width, htop, color);
+
+//   vp = VolumePlot();
+//   vp(g_bottom, datas, x, width, hbottom, color);
+
+//   initialized_plots = true;
+// }
+
+// function createSVG() {
+// var svg = d3.select("body").append("svg")
+//  	    .attr("width", width + margin.left + margin.right)
+//  	    .attr("height", height + margin.top + margin.bottom);
+// 	loading_text = svg.append('text')
+// 	  .classed('loading', true)
+// 	  .style('opacity', 1)
+// 	  .text('loading trades from DB...')
+// 	  .attr('x', width/2)
+// 	  .attr('y', height/2);
+
+// 	g_top = svg.append("g")
+// 	    .classed('price-plot', true)
+// 	    .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+// 	g_bottom = svg.append("g")
+// 	    .classed('volume-plot', true)
+// 	    .attr("transform", "translate(" + margin.left + "," + (margin.top + htop + margin.between) + ")");
+// }
+
+</script>

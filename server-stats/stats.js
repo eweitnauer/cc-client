@@ -1,66 +1,162 @@
+// Copyright Erik Weitnauer, 2014.
+// ../node_modules/.bin/uglifyjs -m 'toplevel' -r 'require,exports' -c --screw-ie8 stats.js -o stats.min.js --preamble '// Copyright Erik Weitnauer 2014.'
+
 var mongoose = require('mongoose');
 var DB = require('./db');
 var Promise = require('bluebird');
 
-//var exchange = 'btce';
-//var pair = 'btc_usd';
-
 DB.onReady(init);
 
-
-/** TODO:
-
-To make the updating efficient, we need to do the following:
-
-- for each interval, get the last data point (has time_start or timestamp T)
-- get all intervals / trades of the representation with one level lower
-  granularity from floor(T, interval)
-- calculate & update based on the retrieved data
-
-*/
-
-
-// TODO:
-// for old trade data, do this day-wise:
-//
-//   * for each day, get all trades, then calculate these minute intervals:
-//   * 1, 5, 30, 240 (4 hours), 1440 (1 day) and save them to a database
-//   * we should use the existing smaller intervals to calculate the bigger ones
-//
-// for new trade data, build the groups as soon as they are complete
-// (minute blocks every minute, 5 min blocks every 5 minutes, etc.)
+var ex_pairs = []; // array of {ex: ..., pair: ..., t0: {1, 5, 30, 240, 1440}}
+var ilens = [1, 5, 30, 240, 1440];
+var limit_trades_per_cycle = 50000;
+var unfinished_ex_pairs = []; // do the 1-min & 5-min trade retrieval with a limit
+                              // if not finished, put them into this array and iterate
 
 function init() {
-	var exchanges = DB.getExchanges();
-	exchanges.forEach(function(ex) {
-		var pairs = DB.getPairsForExchange(ex);
-		pairs.forEach(function(pair) {
-			if (ex !== 'bitfinex' || pair !== 'btcusd') return;
-			var model = DB.getModel(ex, pair);
-			var model_iv = DB.getIntervalModel(ex, pair);
+	ex_pairs = getExchangePairCombinations();
+	init_t0s()
+	.then(updateIntervals);
+}
 
-			console.log(ex, pair);
-			var query = model_iv.find().where({interval: 1})
-			        .sort({time_start: -1}).limit(1).exec();
-			query.then(function(last_iv) {
-				var query2 = model.find();
-			  if (last_iv.length > 0) {
-			  	var t0 = last_iv[0].time_start;
-			  	t0.setHours(0);
-					t0.setMinutes(0);
-					t0.setSeconds(0);
-					t0.setMilliseconds(0);
-			  	query2.where('timestamp').gte(t0);
-			  }
-			  return query2.sort('timestamp').exec();
-			})
-			.then(function(trades) {
-				console.log(trades.length);
-				compute(ex, pair, trades);
-			})
-		  .then(null, console.error);
-		});
+/// Returns a promise.
+/// t0.x is the time_start of last x-minutes interval
+function init_t0s() {
+	var queries = [];
+	var set_t0 = function(t0, len) {
+		return function(data) {
+			if (data.length === 1) t0[len] = data[0].time_start;
+		}
+	}
+  ex_pairs.forEach(function(ex_pair) {
+  	//DB.dropIntervalCollection(ex_pair.ex, ex_pair.pair);
+  	var model_iv = DB.getIntervalModel(ex_pair.ex, ex_pair.pair);
+  	for (var len in ex_pair.t0) {
+  		var query = model_iv.find()
+  		  .where({interval: len})
+  		  .sort({time_start: -1})
+  		  .limit(1)
+  		  .exec()
+  		  .then(set_t0(ex_pair.t0, len));
+  		queries.push(query);
+  	}
+  });
+  return Promise.all(queries);
+}
+
+function updateIntervals() {
+	var t0 = Date.now();
+	unfinished_ex_pairs = [];
+	updateIntervalsFromTrades()
+	.then(updateIntervalsFromIntervals)
+	.then(function() {
+		var t1 = Date.now();
+		console.log('['+(new Date()).toISOString()+'] update done for all intervals, which took', ((t1-t0)/1000).toFixed(3), 'seconds');
+		console.log('scheduling next update 30 seconds from now')
+		setTimeout(updateIntervals, unfinished_ex_pairs.length > 0 ? 0 : 30000);
+	}, console.error);
+}
+
+/// Returns a promise.
+function updateIntervalsFromTrades() {
+	var queries = [];
+	var call_calc_ints = function(ex_pair) {
+		return function(data) {
+			console.log('calculating the 1 and 5 min intervals for', ex_pair.ex
+						 , ex_pair.pair, 'based on', data.length, 'trades...');
+			if (data.length === limit_trades_per_cycle) unfinished_ex_pairs.push(ex_pair);
+			return Promise.all(
+				[ calcAndSaveIntervals(ex_pair, 1, data)
+				, calcAndSaveIntervals(ex_pair, 5, data)]
+			)};
+	};
+
+	(unfinished_ex_pairs.length > 0 ? unfinished_ex_pairs : ex_pairs)
+	.forEach(function(ex_pair) {
+		//if (ex_pair.ex !== 'btce' || ex_pair.pair !== 'btc_usd') return;
+		var model = DB.getModel(ex_pair.ex, ex_pair.pair);
+		var query = model.find();
+		var t0_min = Math.min(ex_pair.t0[1], ex_pair.t0[5]);
+		if (t0_min) query.where('timestamp').gte(t0_min);
+		query = query.sort('timestamp')
+			.limit(limit_trades_per_cycle)
+		  .exec()
+		  .then(call_calc_ints(ex_pair));
+		queries.push(query);
 	});
+	return Promise.all(queries);
+}
+
+/// Returns a promise.
+function updateIntervalsFromIntervals() {
+	if (unfinished_ex_pairs.length > 0) return;
+	var queries = [];
+	var call_calc_ints = function(ex_pair) {
+		return function(data) {
+			console.log('calculating the 30, 240 and 1440 min intervals for', ex_pair.ex
+						 , ex_pair.pair, 'based on', data.length, '1-min intervals...');
+			return Promise.all(
+				[ calcAndSaveIntervals(ex_pair, 30, data)
+				, calcAndSaveIntervals(ex_pair, 240, data)
+				, calcAndSaveIntervals(ex_pair, 1440, data)]
+			)};
+	}
+	ex_pairs.forEach(function(ex_pair) {
+		//if (ex_pair.ex !== 'btce' || ex_pair.pair !== 'btc_usd') return;
+		var model = DB.getIntervalModel(ex_pair.ex, ex_pair.pair);
+		var query = model.find().where({interval: 1});
+		var t0_min = Math.min(ex_pair.t0[30], ex_pair.t0[240], ex_pair.t0[1440]);
+		if (t0_min) query.where('time_start').gte(t0_min);
+		query = query.sort('time_start')
+		  .exec()
+		  .then(call_calc_ints(ex_pair), console.error);
+		queries.push(query);
+	});
+	return Promise.all(queries);
+}
+
+/// data can be an array of trades or intervals.
+function calcAndSaveIntervals(ex_pair, len, data) {
+	if (data.length === 0) {
+		console.log('no data for', len);
+		return;
+	}
+	var model_iv = DB.getIntervalModel(ex_pair.ex, ex_pair.pair);
+	var time_field = 'time_start' in data[0] ? 'time_start' : 'timestamp';
+
+	var t0 = ex_pair.t0[len] || data[0][time_field];
+	floorTime(t0, len);
+
+	var intervals = calcIntervals(len, data, t0);
+	console.log('upserting', intervals.length, len + '-min intervals');
+	var queries = [];
+	intervals.forEach(function(iv) {
+		var query = model_iv.findOneAndUpdate({ time_start: iv.time_start, interval: iv.interval }
+		 	                          , iv, { upsert: true });
+		queries.push(query.exec());
+	});
+	return Promise.all(queries).then(function() {
+		//console.log('setting t0 for', len, 'from', ex_pair.t0[len], 'to', intervals[intervals.length-1].time_start);
+		ex_pair.t0[len] = intervals[intervals.length-1].time_start;
+	});
+}
+
+function floorTime(t, len) {
+	t.setMilliseconds(0);
+	t.setSeconds(0);
+	if (len === 1) return t;
+	if (len === 5) {
+		t.setMinutes(Math.floor(t.getMinutes()/5)*5);
+	} else if (len === 30) {
+		t.setMinutes(Math.floor(t.getMinutes()/30)*30);
+	} else if (len === 240) {
+		t.setMinutes(0);
+		t.setHours(Math.floor(t.getHours()/4)*4);
+	} else {
+		t.setMinutes(0);
+		t.setHours(0);
+	}
+	return t;
 }
 
 function log_fn(err, res) {
@@ -78,49 +174,14 @@ function create_and_save_fn(model, pair) {
 	}
 }
 
-function compute(ex, pair, data) {
-	//if (ex !== 'bitfinex' || pair !== 'btcusd') return;
-	console.log(ex, pair, data.length);
-	if (data.length === 0) return;
-	var day = data[0].timestamp;
-	day.setHours(0);
-	day.setMinutes(0);
-	day.setSeconds(0);
-	day.setMilliseconds(0);
-	//DB.dropIntervalCollection(ex, pair);
-	var model = DB.getIntervalModel(ex, pair);
-	var create_and_save = create_and_save_fn(model, pair);
-	var ints = [1, 5, 30, 240, 1440];
-	var src_data_sets = [data];
-	var grouped_data, src_data;
-	for (var i=0; i<ints.length; i++) {
-		var max_count = (data[data.length-1].timestamp-data[0].timestamp)/ints[i]/1000/60;
-		console.log('max number of intervals: ', max_count);
-		// var idx = 0;
-		// while ( idx < src_data_sets.length-1
-		//      && src_data_sets[idx+1].length > 30 * max_count) idx++;
-		src_data = src_data_sets[i];
-		console.log('computing', ints[i] + '-minute intervals based on', src_data.length
-			         ,(i === 0 ? 'trades' : ints[i-1] + '-minute intervals'));
-		grouped_data = calc_intervals(ints[i], src_data, day);
-		src_data_sets.push(grouped_data);
-		console.log('saving', grouped_data.length, ints[i] + '-minute intervals');
-		//console.log(grouped_data);
-		grouped_data.forEach(create_and_save);
-	}
-}
-
 function order_by_vwap(a, b) {
 	return a.vwap - b.vwap;
 }
 function order_by_price(a, b) {
 	return a.price - b.price;
 }
-function sum(a, b) {
-	return a+b;
-}
 
-function group_data(data) {
+function calcSingleInterval(data) {
 	var iv = { volume: 0
 		       , trades: 0
 		       , price_min: Infinity
@@ -147,8 +208,29 @@ function group_data(data) {
   	return iv;
   }
 
-	iv.price_start = data[0][iv_mode ? 'price_start' : 'price'];
-  iv.price_end = data[N-1][iv_mode ? 'price_end' : 'price'];
+  if (iv_mode) {
+		iv.price_start = data[0].price_start;
+		iv.price_end = data[N-1].price_end;
+	} else {
+		iv.price_start = data[0].price;
+		iv.price_end = data[N-1].price;
+		var id = data[0].id;
+		for (var i=1; i<N; i++) {
+	 		if (data[i].timestamp > data[0].timestamp) break;
+	 		if (data[i].id < id) {
+	 			id = data[i].id;
+	 			iv.price_start = data[i].price;
+	 		}
+		}
+		id = data[N-1].id;
+		for (var i=N-2; i>0; i--) {
+		  if (data[i].timestamp < data[N-1].timestamp) break;
+		  if (data[i].id > id) {
+		  	id = data[i].id;
+		  	iv.price_end = data[i].price;
+		  }
+		}
+	}
 
   iv.volume = vol;
 	data.sort(iv_mode ? order_by_vwap : order_by_price);
@@ -185,7 +267,7 @@ function group_data(data) {
 
 /// Interval is in minutes (1, 5, 30, 240 (4 hours), 1440 (1 day))
 /// data can be an array of trades or intervals
-function calc_intervals(interval_in_min, data, time_start) {
+function calcIntervals(interval_in_min, data, time_start) {
 	var ivs = [];
 	if (data.length === 0) return ivs;
 
@@ -199,7 +281,7 @@ function calc_intervals(interval_in_min, data, time_start) {
 	do {
 		var ttime = is_trades ? data[i].timestamp.valueOf()
 		                      : data[i].time_start.valueOf();
-		if (ttime-iv_t0 < 0) i++; // ignore trade before start_time
+		if (ttime-iv_t0 < 0) i++; // ignore trade before time_start
 		else if (ttime-iv_t0 >= 0 && ttime-iv_t1 < 0) { // trade in current interval
 			if (idx0 === -1) idx0 = i;
 			count++;
@@ -207,7 +289,7 @@ function calc_intervals(interval_in_min, data, time_start) {
 		}
 		if (ttime-iv_t1 >= 0 || i===data.length) { // trade after current interval
 			if (count > 0) {
-				var iv = group_data(data.slice(idx0, idx0+count));
+				var iv = calcSingleInterval(data.slice(idx0, idx0+count));
 
 					//is_trades ? group_trades(data, idx0, count)
 			  	//                 : group_intervals(data, idx0, count);
@@ -224,4 +306,16 @@ function calc_intervals(interval_in_min, data, time_start) {
 	} while (i < data.length);
 
 	return ivs;
+}
+
+function getExchangePairCombinations() {
+	var combs = [];
+	var exchanges = DB.getExchanges();
+	exchanges.forEach(function(ex) {
+		var pairs = DB.getPairsForExchange(ex);
+		combs = combs.concat(pairs.map(function(pair) {
+			return {ex: ex, pair: pair, t0: {1: 0, 5: 0, 30: 0, 240: 0, 1440: 0}}
+		}));
+	});
+	return combs;
 }

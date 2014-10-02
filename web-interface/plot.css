@@ -1,0 +1,116 @@
+<style>
+h1 {
+  font-family: sans-serif;
+  color: gray;
+}
+body {
+  text-align: center;
+}
+.axis text {
+	font: 10px sans-serif;
+	fill: gray;
+}
+.axis line, .axis path {
+	shape-rendering: crispEdges;
+	fill: none;
+	stroke: silver;
+}
+
+rect.overlay {
+  stroke: none;
+  fill: none;
+  pointer-events: all;
+  cursor: row-resize;
+}
+
+/*.volume-plot .axis.x text {
+  display: none;
+}*/
+
+/*.volume-plot .box rect {
+  stroke: steelblue;
+  fill: lightsteelblue;
+  fill-opacity: 0.6;
+}*/
+
+.border {
+  stroke: silver;
+  shape-rendering: crispEdges;
+  fill: none;
+}
+
+svg text.loading {
+  font-family: sans-serif;
+  font-style: italic;
+  fill: gray;
+  text-anchor: middle;
+  dominant-baseline: center;
+}
+
+.box {
+	/*shape-rendering: crispEdges;*/
+}
+
+/*.box rect {
+  stroke: black;
+  fill: silver;
+}
+
+.buy-thresh line {
+  stroke: steelblue;
+}
+
+.buy-thresh rect {
+  stroke: none;
+  fill: steelblue;
+  fill-opacity: 0.15;
+}
+
+.buy-thresh text {
+  fill: steelblue;
+  font-size: 12px;
+  font-family: sans-serif;
+  text-anchor: middle;
+}
+
+.sell-thresh {
+  stroke: lightpink;
+}
+
+.sell-thresh rect {
+  stroke: none;
+  fill: lightpink;
+  fill-opacity: 0.15;
+}
+
+.box rect.bull {
+  fill: #64FF64;
+}
+
+.box rect.bear {
+  fill: #FF6464;
+}
+
+.box rect.highlighted {
+  fill: #FFC900;
+}
+
+path.vwap {
+ stroke: steelblue;
+ stroke-width: 1px;
+ fill: none;
+}
+
+path.min-max {
+  stroke: none;
+  fill: black;
+  fill-opacity: 0.1;
+}
+
+path.quantiles {
+  stroke: none;
+  fill: steelblue;
+  fill-opacity: 0.25;
+}*/
+
+</style>
