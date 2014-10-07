@@ -23,21 +23,21 @@ var VolumePlot = function() {
     // create y scale
     y = d3.scale.linear()
           .range([height, 0]);
-    var max = d3.max(datas, function(data) { return d3.max(data, function(d) { return d.volume }) });
+    var max = d3.max(datas, function(data) { return d3.max(data, function(d) { return d.volume }) }) || 1;
     y.domain([0, max*1.05]);
     var axes = container.append('g');
 
     // now create & update the axes
-    // xAxis = d3.svg.axis()
-    //   .scale(x)
-    //   .orient("top")
-    //   .outerTickSize(0)
-    //   .tickPadding(10);
+    xAxis = d3.svg.axis()
+      .scale(x)
+      .orient("top")
+      .outerTickSize(0)
+      .tickPadding(10);
 
-    // xAxisEl = axes.append("g")
-    //   .attr("class", "x axis")
-    //   .attr("transform", "translate(0,0)")
-    //   .call(xAxis);
+    xAxisEl = axes.append("g")
+      .attr("class", "x axis")
+      .attr("transform", "translate(0,0)")
+      .call(xAxis);
 
     yAxis = d3.svg.axis()
       .scale(y)
@@ -60,13 +60,14 @@ var VolumePlot = function() {
   }
 
   plot.updateAll = function(datas) {
+    var scaled_y = plot.updateAxes(datas);
     var gs = container.selectAll('.layer')
       .data(datas);
     gs.enter().append('g').classed('layer', true);
     gs.exit().remove();
     gs.each(function(data, idx) {
       var g = d3.select(this);
-      plot.update(g, data, idx);
+      plot.update(g, data, idx, scaled_y);
     });
 
     plot.orderAll();
@@ -77,8 +78,9 @@ var VolumePlot = function() {
       .sort(function(d1, d2) { return d2.volume - d1.volume });
   }
 
-  plot.update = function(container, data, idx) {
-    var max = d3.max(data, function(d) { return d.volume });
+  plot.updateAxes = function(datas) {
+    // update axes for all data
+    var max = d3.max(datas, function(data) { return d3.max(data, function(d) { return d.volume })});
 
     var delay = 0, scaled_y = false;
 
@@ -93,12 +95,18 @@ var VolumePlot = function() {
       scaled_y = true;
     }
 
-    // xAxis.scale(x);
-    // xAxisEl.transition().duration(500).call(xAxis);
+    xAxis.scale(x);
+    xAxisEl.transition().delay(delay).duration(500).call(xAxis);
+    return scaled_y;
+  }
 
+  plot.update = function(container, data, idx, scaled_y) {
     // and create & update the box charts
-    var w = 2/3*(x(data[0].time_end) - x(data[0].time_start));
-    var mar = w/4;
+    var w, mar;
+    if (data.length > 0) {
+      w = 2/3*(x(data[0].time_end) - x(data[0].time_start));
+      mar = w/4;
+    }
     var box = container.selectAll(".box")
         .data(data, function(d) {return d._id});
 
@@ -117,7 +125,7 @@ var VolumePlot = function() {
 
     var t = box.transition()
        .duration(500)
-       .delay(delay)
+       .delay(scaled_y ? 750 : 0)
        .attr("transform", function(d) { return "translate(" + x(d.time_start) + ",0)"; })
        .style('opacity', 1);
 

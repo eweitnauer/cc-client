@@ -39,13 +39,19 @@ var PricePlot = function() {
 
   plot.show_candles = function(val) {
     if (arguments.length === 0) return show_candles;
-    show_candles = val;
+    if (val !== show_candles) {
+      show_candles = val;
+      if (!val && container) container.selectAll('.box').remove();
+    }
     return this;
   }
 
   plot.show_vwap = function(val) {
     if (arguments.length === 0) return show_vwap;
-    show_vwap = val;
+    if (val !== show_vwap) {
+      show_vwap = val;
+      if (!val && container) container.selectAll('.vwap').remove();
+    }
     return this;
   }
 
@@ -58,8 +64,8 @@ var PricePlot = function() {
       gmins.push(d3.min(data, function(d) { return d.price_min }));
       gmaxs.push(d3.max(data, function(d) { return d.price_max }));
     })
-    var gmin = d3.min(gmins)
-       ,gmax = d3.max(gmaxs)
+    var gmin = d3.min(gmins) || 0
+       ,gmax = d3.max(gmaxs) || 0
        ,gd = gmax-gmin;
     y.domain([gmin-gd*0.15, gmax+gd*0.15]);
 
@@ -100,25 +106,27 @@ var PricePlot = function() {
   }
 
   plot.updateAll = function(datas) {
+    var scaled_y = plot.update_axis(datas);
     var gs = container.selectAll('.layer')
       .data(datas);
     gs.enter().append('g').classed('layer', true);
     gs.exit().remove();
     gs.each(function(data, idx) {
-      //var scaled_y = plot.update_axis(data);
       var g = d3.select(this);
-      if (show_candles) plot.candles(g, data, idx);
-      if (show_min_max) plot.min_max(g, data, idx);
-      if (show_quantiles) plot.quantiles(g, data, idx);
-      if (show_vwap) plot.vwap(g, data, idx);
+      if (show_candles) plot.candles(g, data, idx, scaled_y);
+      if (show_min_max) plot.min_max(g, data, idx, scaled_y);
+      if (show_quantiles) plot.quantiles(g, data, idx, scaled_y);
+      if (show_vwap) plot.vwap(g, data, idx, scaled_y);
     });
   }
 
-  plot.update_axis = function(data) {
+  plot.update_axis = function(datas) {
     // update y scale and axis
-    var gmin = d3.min(data, function(d) { return d.price_min })
-       ,gmax = d3.max(data, function(d) { return d.price_max })
+    var gmin = d3.min(datas, function(data) { return d3.min(data, function(d) { return d.price_min })})
+       ,gmax = d3.max(datas, function(data) { return d3.max(data, function(d) { return d.price_max })})
        ,gd = (gmax-gmin);
+    console.log('updating axis for ds=', ds=datas);
+    console.log(gmin, gmax, gd);
 
     var delay = 0, scaled_y = false;
 
@@ -127,6 +135,7 @@ var PricePlot = function() {
     if ((gd < 0.5*(y.domain()[1]-y.domain()[0])) ||
         (gmin-gd*0.05 < y.domain()[0] || gmax+gd*0.05 > y.domain()[1])) {
       y.domain([gmin-gd*0.15, gmax+gd*0.15]);
+      console.log('new domain', y.domain());
       yAxis.scale(y);
       yAxisEl.transition().duration(750).call(yAxis);
       delay = 750;
@@ -138,8 +147,11 @@ var PricePlot = function() {
   }
 
   plot.candles = function(g, data, idx, rescale_y) {
-    var w = 2/3*(x(data[0].time_end) - x(data[0].time_start));
-    var mar = w/4;
+    var w, mar;
+    if (data.length > 0) {
+      w = 2/3*(x(data[0].time_end) - x(data[0].time_start));
+      mar = w/4;
+    }
   	var box = g.selectAll(".box")
     	  .data(data, function(d) {return d._id});
 
@@ -172,8 +184,8 @@ var PricePlot = function() {
     if (rescale_y) {
       t.select('line').delay(0).attr("y1", function (d) { return y(d.price_min) })
                       .attr("y2", function (d) { return y(d.price_max) })
-      t.select('rect').delay(0).attr("y", function (d) { return y(d.price_start) })
-                               .attr("height", function (d) { return -y(d.price_end)+y(d.price_start) })
+      t.select('rect').delay(0).attr("y", function (d) { return Math.min(y(d.price_start), y(d.price_end)) })
+                               .attr("height", function (d) { return Math.abs(-y(d.price_start)+y(d.price_end)) })
     }
 
     box.exit().remove();
@@ -193,13 +205,12 @@ var PricePlot = function() {
     }
     var path = g.selectAll(".vwap")
         .data([data]);
-     if (rescale_y) path.attr('d', vwap_line)
     path.enter()
         .append('path')
         .classed('vwap', true)
-        .attr('d', vwap_line)
         .style('fill', 'none');
     path.style('stroke', color_map(idx));
+    path.attr('d', vwap_line);
     path.exit().remove();
   }
 

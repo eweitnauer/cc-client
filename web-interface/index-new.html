@@ -2,16 +2,38 @@
 <meta charset="utf-8">
 <title>cc-client</title>
 <script src="libs/d3/d3.min.js"></script>
-<script src="price-plot.js"></script>
-<script src="vol-plot.js"></script>
 <script src="interval-list.js"></script>
-<script src="data.js"></script>
+<script src="data-source.js"></script>
+<script src="vol-plot.js"></script>
+<script src="price-plot.js"></script>
+<script src="main-plot.js"></script>
 <link rel="stylesheet" href="plot.css"/>
 <body>
-  <h1>BTC-E BTC/USD</h1>
 <script>
 
-var plotData = getPlotData();
+var plots = [];
+
+plots.push(MainPlot().addDataSource(new DataSource('bitfinex/btcusd'), true)
+                      .addDataSource(new DataSource('btce/btc_usd'), true)
+                      .addDataSource(new DataSource('bter/btc_usd'), true)
+                      .label("BTC / USD"));
+
+plots.push(MainPlot().addDataSource(new DataSource('bitfinex/ltcusd'), true)
+										 .addDataSource(new DataSource('btce/ltc_usd'), true)
+                      .label("LTC / USD"));
+
+plots.push(MainPlot().addDataSource(new DataSource('btce/ltc_btc'), true)
+                      .label("LTC / BTC"));
+
+plots.push(MainPlot().addDataSource(new DataSource('bitstamp/btc_eur'), true)
+										 .addDataSource(new DataSource('btce/btc_eur'), true)
+                      .label("BTC / EUR"));
+
+plots.push(MainPlot().addDataSource(new DataSource('btc-china/cnybtc'), true)
+										 .label("BTC / CNY"));
+
+plots.push(MainPlot().addDataSource(new DataSource('btc-china/cnyltc'), true)
+										 .label("LTC / CNY"));
 
 var margin = {top: 10, right: 50, bottom: 10, left: 10, between: 40}
 	   ,width = 960 - margin.left - margin.right
@@ -23,24 +45,11 @@ initializePlots();
 
 function initializePlots() {
 	var els = d3.select('body').selectAll("div.plot")
-	   					 .data(plotData);
+	   					 .data(plots);
 	var row = els.enter()
 	   .append('div')
-	   .classed('plot', true);
-	var left = row.append('div')
-	  .classed('left-col', true);
-	left.append('h2')
-	  .text(function(d) { return d.label });
-	var right = row.append('div')
-	  .classed('right-col', true);
-	var svg = right.append('svg')
-	  .attr({width: '100%', height: height});
-	svg.append('g')
-	  .classed('price-plot', true)
-	  .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
-	svg.append('g')
-	  .classed('volume-plot', true)
- 	  .attr("transform", "translate(" + margin.left + "," + (margin.top + htop + margin.between) + ")");
+	   .classed('plot', true)
+	   .each(function(d) { d(this) });
 }
 
 // function loadAllData() {

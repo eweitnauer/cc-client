@@ -31,11 +31,13 @@ DataSource.prototype.loadData = function(interval, mode, callback) {
 DataSource.prototype.getDataFromCache = function(interval, mode) {
 	console.log('filtering', mode, 'data in', interval+'...');
 	var data = this.data[mode];
-	var start = (new Date(interval[0])).toISOString()
-	   ,end = (new Date(interval[1])).toISOString();
-	return data.filter(function(d) {
+	var start = +(new Date(interval[0]))
+	   ,end = +(new Date(interval[1]));
+	d = data.filter(function(d) {
 		return d.time_start >= start && d.time_end <= end;
 	});
+	console.log('returning', d.length, 'data points');
+	return d;
 }
 
 /// Gets data from the server, inserts it into the cache and calls the callback.
@@ -45,17 +47,26 @@ DataSource.prototype.queryDataFromServer = function(interval, mode, callback) {
 	console.log('requesting data from server:', url);
 	var self = this;
 	d3.json(url, function(d) {
-		self.insertData(d, mode);
 		self.loaded_ivs[mode].insert(interval);
+		if (!d || d.length === 0) {
+			console.log('got empty data for', url);
+		} else {
+			self.convertDates(d);
+			self.insertData(d, mode);
+		}
 		callback();
+		return;
 	});
 }
 
-DataSource.prototype.insertData = function(new_data, mode) {
-	if (!new_data || new_data.length === 0) {
-		console.log('got empty data');
-		return;
+DataSource.prototype.convertDates = function(data) {
+	for (var i=0; i<data.length; i++) {
+	  data[i].time_start = +(new Date(data[i].time_start));
+	  data[i].time_end = +(new Date(data[i].time_end));
 	}
+}
+
+DataSource.prototype.insertData = function(new_data, mode) {
 	var nd0 = new_data[0];
 	var data = this.data[mode];
 	var idx = 0;
@@ -78,27 +89,15 @@ function PlotData(options) {
 	this.group_by = options.group_by || '1min';
 }
 
-//PlotData.prototype.load()
-
-function getPlotData() {
-	return [
-		new PlotData({label: 'USD / BTC', sources:
-			[ { source: new DataSource('bitfinex/btcusd'), active: true }
-		  , { source: new DataSource('btce/btc_usd'), active: true }]})
-	, new PlotData({label: 'BTC / LTC', sources:
-			[ { source: new DataSource('btce/btc_ltc'), active: true }]})
-	];
-}
-
-/// Pass ex, pair and querystring options in options.
-function loadData(options, user_data, callback) {
-	var url = 'http://localhost:3000/api/trades/'+options.ex+'/'+options.pair;
-	var qs = [];
-	for (var key in options) {
-		if (key !== 'ex' && key !== 'pair') qs.push(key+'='+options[key]);
-	}
-	qs.push('limit=1000');
-	if (qs.length > 0) url += '?' + qs.join('&');
-	console.log(url);
-	d3.json(url, function(d) { callback(d, user_data) });
-}
+// /// Pass ex, pair and querystring options in options.
+// function loadData(options, user_data, callback) {
+// 	var url = 'http://localhost:3000/api/trades/'+options.ex+'/'+options.pair;
+// 	var qs = [];
+// 	for (var key in options) {
+// 		if (key !== 'ex' && key !== 'pair') qs.push(key+'='+options[key]);
+// 	}
+// 	qs.push('limit=1000');
+// 	if (qs.length > 0) url += '?' + qs.join('&');
+// 	console.log(url);
+// 	d3.json(url, function(d) { callback(d, user_data) });
+// }
