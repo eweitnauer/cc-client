@@ -172,22 +172,6 @@ var MainPlot = function() {
         plot.plot_type(d);
       });
 
-    // legend_lines = left_col.append('table')
-    //   .classed('legend', true)
-    //   .selectAll('tr')
-    //   .data(sources)
-    //   .enter()
-    //   .append('tr');
-    // legend_lines.append('td')
-    //   .classed('label', true)
-    //   .text(function(d) { return d.ex })
-    //   .on('click', plot.toggleSource);
-    // legend_lines.append('td')
-    //   .classed('marker', true)
-    //   .on('click', plot.toggleSource)
-    //   .append('div');
-    // plot.updateLegend();
-
     legend_lines = left_col.append('div')
       .classed('legend', true)
       .selectAll('div.legend-item')
