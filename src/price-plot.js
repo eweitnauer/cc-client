@@ -1,19 +1,23 @@
 var PricePlot = function() {
-  var y // y-scale
-    , x // x-scale
-    , width, height
-    , xAxis
-    , xAxisEl
-    , yAxis
-    , yAxisEl
-    , container
+  var x, y // x and y scale
+    , id = uid()
+    , width = 100, height = 100
+    , xAxis, xAxisEl
+    , yAxis, yAxisEl
+    , container, content_el
+    , clip_rect
     , show_vwap = false
     , show_candles = true
     , show_quantiles = false
     , show_min_max = false
     , vwap_line = null
     , min_max_area = null
-    , color_map = null;
+    , data_margin = 0.25 // percentage of data point width used as margin
+    , color_scale = d3.scale.category10() // id->color
+    , data_layers // [{id, data}]
+    , initialized = false
+    , bisect_end = d3.bisector(function(d) { return d.time_end }).right
+    , bisect_start = d3.bisector(function(d) { return d.time_start }).right;
 
   var plot = function(_container, data, _x, _width, _height, colors) {
     container = _container;
@@ -69,6 +73,10 @@ var PricePlot = function() {
        ,gd = gmax-gmin;
     y.domain([gmin-gd*0.15, gmax+gd*0.15]);
 
+    clip_rect = container.append("clipPath").attr("id", "clip_"+id)
+      .append("rect")
+      .attr({width: width, height: height});
+
     var axes = container.append('g');
 
     xAxis = d3.svg.axis()
@@ -102,51 +110,70 @@ var PricePlot = function() {
       .attr('height', height)
       .classed('border', true);
 
+    content_el = container.append('g')
+      .attr('clip-path', 'url(#clip_'+id+')');
+
     plot.updateAll(data_arr);
   }
 
-  plot.updateAll = function(datas) {
-    var scaled_y = plot.update_axis(datas);
-    var gs = container.selectAll('.layer')
+  plot.clear = function() {
+    content_el.selectAll('.layer').remove();
+  }
+
+  plot.updateAllFast = function(datas) {
+    plot.updateAll(datas, true);
+  }
+
+  plot.updateAll = function(datas, fast) {
+    plot.update_x_axis(fast);
+    var gs = content_el.selectAll('.layer')
       .data(datas);
     gs.enter().append('g').classed('layer', true);
     gs.exit().remove();
-    gs.each(function(data, idx) {
+    plot.updateData(gs, false, fast);
+    var scaled_y = plot.update_y_axis(datas, fast);
+    if (scaled_y) plot.updateData(gs, true, fast);
+  }
+
+  plot.updateData = function(layers, scaled_y, fast) {
+    layers.each(function(data, idx) {
       var g = d3.select(this);
-      if (show_candles) plot.candles(g, data, idx, scaled_y);
-      if (show_min_max) plot.min_max(g, data, idx, scaled_y);
-      if (show_quantiles) plot.quantiles(g, data, idx, scaled_y);
-      if (show_vwap) plot.vwap(g, data, idx, scaled_y);
+      if (show_candles) plot.candles(g, data, idx, scaled_y, fast);
+      if (show_min_max) plot.min_max(g, data, idx, scaled_y, fast);
+      if (show_quantiles) plot.quantiles(g, data, idx, scaled_y, fast);
+      if (show_vwap) plot.vwap(g, data, idx, scaled_y, fast);
     });
   }
 
-  plot.update_axis = function(datas) {
-    // update y scale and axis
-    var gmin = d3.min(datas, function(data) { return d3.min(data, function(d) { return d.price_min })})
-       ,gmax = d3.max(datas, function(data) { return d3.max(data, function(d) { return d.price_max })})
-       ,gd = (gmax-gmin);
-    console.log('updating axis for ds=', ds=datas);
-    console.log(gmin, gmax, gd);
-
+  plot.update_y_axis = function(datas, fast) {
     var delay = 0, scaled_y = false;
+    if (!fast) {
+      // update y scale and axis
+      var gmin = d3.min(datas, function(data) { return d3.min(data, function(d) { return d.price_min })})
+         ,gmax = d3.max(datas, function(data) { return d3.max(data, function(d) { return d.price_max })})
+         ,gd = (gmax-gmin);
 
-    // only rescale y axis if the data is out of range or if the it takes
-    // less than 50% of the space
-    if ((gd < 0.5*(y.domain()[1]-y.domain()[0])) ||
-        (gmin-gd*0.05 < y.domain()[0] || gmax+gd*0.05 > y.domain()[1])) {
-      y.domain([gmin-gd*0.15, gmax+gd*0.15]);
-      console.log('new domain', y.domain());
-      yAxis.scale(y);
-      yAxisEl.transition().duration(750).call(yAxis);
-      delay = 750;
-      scaled_y = true;
+      // only rescale y axis if the data is out of range or if the it takes
+      // less than 50% of the space
+      if ((gd < 0.5*(y.domain()[1]-y.domain()[0])) ||
+          (gmin-gd*0.05 < y.domain()[0] || gmax+gd*0.05 > y.domain()[1])) {
+        y.domain([gmin-gd*0.15, gmax+gd*0.15]);
+        yAxis.scale(y);
+        yAxisEl.transition().duration(750).call(yAxis);
+        delay = 750;
+        scaled_y = true;
+      }
     }
-    xAxis.scale(x);
-    xAxisEl.transition().delay(delay).duration(500).call(xAxis);
     return scaled_y;
   }
 
-  plot.candles = function(g, data, idx, rescale_y) {
+  plot.update_x_axis = function(fast) {
+    xAxis.scale(x);
+    if (fast) xAxisEl.call(xAxis);
+    else xAxisEl.transition().delay(0).duration(500).call(xAxis);
+  }
+
+  plot.candles = function(g, data, idx, rescale_y, fast) {
     var w, mar;
     if (data.length > 0) {
       w = 2/3*(x(data[0].time_end) - x(data[0].time_start));
@@ -175,11 +202,9 @@ var PricePlot = function() {
       .style('fill', function(d) { return (d.price_start < d.price_end) ? '#64FF64' : '#FF6464' })
       .style('stroke', 'black');
 
-    t = box.transition()
-       .duration(500)
-       .delay(rescale_y ? 750 : 0)
-       .attr("transform", function(d) { return "translate(" + x(d.time_start) + ",0)" })
-       .style('opacity', 1);
+    var t = (fast ? box : box.transition().duration(750).delay(rescale_y ? 750 : 0));
+    t.attr("transform", function(d) { return "translate(" + x(d.time_start) + ",0)" })
+     .style('opacity', 1);
 
     if (rescale_y) {
       t.select('line').delay(0).attr("y1", function (d) { return y(d.price_min) })
@@ -193,7 +218,7 @@ var PricePlot = function() {
     return this;
   }
 
-  plot.vwap = function(g, data, idx, rescale_y) {
+  plot.vwap = function(g, data, idx, rescale_y, fast) {
     if (!vwap_line) {
       vwap_line = d3.svg.line()
         .y(function(d) {
@@ -203,18 +228,40 @@ var PricePlot = function() {
           return x(((+d.time_start)+(+d.time_end))/2)
         });
     }
-    var path = g.selectAll(".vwap")
+    var circles = g.selectAll('circle.vwap')
+        .data(data, function(d) { return d._id });
+    circles.enter()
+      .append('circle')
+      .classed('vwap', true)
+      .style('fill', color_map(idx))
+      .attr('r', 1.5);
+    if (rescale_y) {
+      circles.transition().duration(750)
+        .attr('cx', function(d) { return x(((+d.time_start)+(+d.time_end))/2) })
+        .attr('cy', function(d) { return y(d.vwap) })
+    } else {
+      circles
+        .attr('cx', function(d) { return x(((+d.time_start)+(+d.time_end))/2) })
+        .attr('cy', function(d) { return y(d.vwap) })
+    }
+    circles.exit().remove();
+    var path = g.selectAll("path.vwap")
         .data([data]);
     path.enter()
         .append('path')
         .classed('vwap', true)
-        .style('fill', 'none');
+        .style('fill', 'none')
+        .attr('d', vwap_line);
     path.style('stroke', color_map(idx));
-    path.attr('d', vwap_line);
+    if (rescale_y) {
+      path.transition().duration(750).attr('d', vwap_line);
+    } else {
+      path.attr('d', vwap_line);
+    }
     path.exit().remove();
   }
 
-  plot.min_max = function(g, data, idx, rescale_y) {
+  plot.min_max = function(g, data, idx, rescale_y, fast) {
     if (!min_max_area) {
       min_max_area = d3.svg.area()
         .y0(function(d) {
@@ -234,7 +281,7 @@ var PricePlot = function() {
     path.exit().remove();
   }
 
-  plot.quantiles = function(g, data, idx, rescale_y) {
+  plot.quantiles = function(g, data, idx, rescale_y, fast) {
     if (!quantiles_area) {
       quantiles_area = d3.svg.area()
         .y0(function(d) {

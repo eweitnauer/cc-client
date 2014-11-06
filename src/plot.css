@@ -8,7 +8,7 @@ body {
   font-family: Lato, sans-serif;
   box-sizing: border-box;
 }
-.axis text {
+.axis text, .ruler-text {
 	font: 10px sans-serif;
 	fill: gray;
   font-weight: 300;
@@ -17,6 +17,10 @@ body {
 	shape-rendering: crispEdges;
 	fill: none;
 	stroke: silver;
+}
+
+.ruler {
+  stroke: silver;
 }
 
 div.legend {

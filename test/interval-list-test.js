@@ -1,4 +1,4 @@
-var IntervalList = require('../interval-list.js').IntervalList;
+var IntervalList = require('../src/interval-list.js').IntervalList;
 describe('IntervalList', function() {
 	describe('.getMissingIntervals', function() {
 		it('should should return the passed interval if the list is empty', function() {

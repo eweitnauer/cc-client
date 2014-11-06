@@ -1,6 +1,6 @@
 {
   "name": "cc-client",
-  "description": "Crypto-Currency Client & Server Scripts",
+  "description": "crypto currency web client",
   "version": "0.0.1",
   "keywords": [
     "bitcoin",
@@ -10,12 +10,12 @@
   "author": {
     "name": "Erik Weitnauer"
   },
-  "dependencies": {
-    "forever": "0.11.x",
-    "mongoose": "3.8.x",
-    "request": "2.40.x",
-    "socket.io-client": "~1.0.6",
-    "express": "~4.8.7",
-    "bluebird": "~2.3.2"
+  "devDependencies": {
+    "uglify-js": "2.x.x",
+    "mocha": "1.x.x",
+    "should": "4.x.x"
+  },
+  "scripts": {
+    "test": "make test"
   }
 }

@@ -1,0 +1,111 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>cc-client</title>
+<script src="libs/d3/d3.min.js"></script>
+<script src="tools.js"></script>
+<script src="interval-list.js"></script>
+<script src="data-source.js"></script>
+<script src="vol-plot.js"></script>
+<script src="price-plot.js"></script>
+<script src="main-plot.js"></script>
+<link rel="stylesheet" href="plot.css"/>
+<body>
+<script>
+
+var plots = [];
+
+// plots.push(MainPlot()//.addDataSource(new DataSource('bitfinex/btcusd'), true)
+//                       .addDataSource(new DataSource('btce/btc_usd'), true)
+// //                       .addDataSource(new DataSource('bter/btc_usd'), true)
+//                        .label("BTC / USD"));
+
+// plots.push(MainPlot().addDataSource(new DataSource('bitfinex/ltcusd'), true)
+// 										 .addDataSource(new DataSource('btce/ltc_usd'), true)
+//                       .label("LTC / USD"));
+
+// plots.push(MainPlot().addDataSource(new DataSource('btce/ltc_btc'), true)
+//                       .label("LTC / BTC"));
+
+// plots.push(MainPlot().addDataSource(new DataSource('bitstamp/btc_eur'), true)
+// 										 .addDataSource(new DataSource('btce/btc_eur'), true)
+//                       .label("BTC / EUR"));
+
+// plots.push(MainPlot().addDataSource(new DataSource('btc-china/cnybtc'), true)
+// 										 .label("BTC / CNY"));
+
+// plots.push(MainPlot().addDataSource(new DataSource('btc-china/cnyltc'), true)
+// 										 .label("LTC / CNY"));
+
+
+var margin = {top: 10, right: 50, bottom: 10, left: 10, between: 40}
+	   ,width = 960 - margin.left - margin.right
+	   ,height = 350 - margin.top - margin.bottom
+	   ,htop = (height-margin.between) * 0.85
+	   ,hbottom = (height-margin.between) * 0.15;
+
+var server_pairs = {}; // normalized pair names -> { ex, pair }
+
+queryExchanges(initializePlots);
+//initializePlots();
+
+function queryExchanges(callback) {
+	var url = 'http://localhost:3000/api/trades/';
+	d3.json(url, function(exchanges) {
+		for (var exchange in exchanges) {
+			var pairs = exchanges[exchange];
+			for (var i=0; i<pairs.length; i++) {
+			  addServerPair(pairs[i], exchange);
+			}
+		}
+		console.log(server_pairs);
+		for (var key in server_pairs) {
+			var plot = MainPlot().label(key);
+			for (var i=0; i<server_pairs[key].length; i++) {
+				var sp = server_pairs[key][i];
+				plot.addDataSource(new DataSource(sp.ex+'/'+sp.pair), true);
+			}
+			plots.push(plot);
+		}
+		callback();
+	});
+}
+
+function normalizePairName(pair) {
+	var parts;
+	if (pair.indexOf('_') === -1) {
+		parts = [pair.substring(0,3), pair.substring(3)];
+	} else parts = pair.split('_');
+	return parts[0].toUpperCase() + " / " + parts[1].toUpperCase();
+}
+
+function normalizePairNameSwapped(pair) {
+	var parts = normalizePairName(pair).split(' / ');
+	return parts[1] + ' / ' + parts[0];
+}
+
+addServerPair = function(pair, ex) {
+	var name = normalizePairName(pair);
+	var sname = normalizePairNameSwapped(pair);
+	var pair_name;
+	if ((name in server_pairs) || !(sname in server_pairs)) pair_name = name;
+	else pair_name = sname;
+	server_pairs[pair_name] = server_pairs[pair_name] || [];
+	server_pairs[pair_name].push({ex: ex, pair: pair});
+}
+
+function initializePlots() {
+	var els = d3.select('body').selectAll("div.plot")
+	   					 .data(plots);
+	var row = els.enter()
+	   .append('div')
+	   .classed('plot', true)
+	   .each(function(d) { d(this) });
+
+	setInterval(update, 60000);
+}
+
+function update() {
+	plots.forEach(function(plot) { plot.update() });
+}
+
+</script>

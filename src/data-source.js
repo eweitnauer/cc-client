@@ -8,6 +8,7 @@ function DataSource(path) {
 	this.data = { '1min': [], '5min': [], '30min': [], '4h': [], '1d': []};
 	this.loading = false; // true while requesting data from the db
 	                      // use to avoid several concurrent requests
+	this.bisect = d3.bisector(function(d) { return d.time_end }).right;
 }
 
 /// Call with, e.g. ([t0, t1], '1min', fn) to get fn called with an array of data.
@@ -27,35 +28,39 @@ DataSource.prototype.loadData = function(interval, mode, callback) {
 	ivs.forEach(function(iv) { self.queryDataFromServer(iv, mode, done) });
 }
 
-/// Returns cached data.
-DataSource.prototype.getDataFromCache = function(interval, mode) {
-	console.log('filtering', mode, 'data in', interval+'...');
+/// Returns cached data. Also uses the callback if given.
+DataSource.prototype.getDataFromCache = function(interval, mode, callback) {
+	//console.log('filtering', this.ex, this.pair , mode, 'data in', interval+'...');
 	var data = this.data[mode];
 	var start = +(new Date(interval[0]))
 	   ,end = +(new Date(interval[1]));
-	d = data.filter(function(d) {
-		return d.time_start >= start && d.time_end <= end;
-	});
-	console.log('returning', d.length, 'data points');
+	var idx0 = this.bisect(data, start)
+	   ,idx1 = this.bisect(data, end, idx0);
+	var d = data.slice(idx0, idx1);
+	if (callback) callback(d);
 	return d;
 }
 
 /// Gets data from the server, inserts it into the cache and calls the callback.
 DataSource.prototype.queryDataFromServer = function(interval, mode, callback) {
 	var url = 'http://localhost:3000/api/trades/'+this.ex+'/'+this.pair;
-	url += "?limit=1000&group_by="+mode+"&time="+interval[0]+"&time_end="+interval[1];
-	console.log('requesting data from server:', url);
+	url += "?limit=200&group_by="+mode+"&time="+interval[0]+"&time_end="+interval[1];
+	//console.log('requesting data from server:', url);
 	var self = this;
 	d3.json(url, function(d) {
-		self.loaded_ivs[mode].insert(interval);
-		if (!d || d.length === 0) {
-			console.log('got empty data for', url);
+		if (d.length === 200) {
+			throw "more data on the server for this interval -- handle this!"; // FIXME
 		} else {
-			self.convertDates(d);
-			self.insertData(d, mode);
+			self.loaded_ivs[mode].insert(interval);
+			console.log('got', d.length, 'data points from the server');
+			if (!d || d.length === 0) {
+				//console.log('got empty data for', url);
+			} else {
+				self.convertDates(d);
+				self.insertData(d, mode);
+			}
+			callback();
 		}
-		callback();
-		return;
 	});
 }
 
@@ -69,16 +74,10 @@ DataSource.prototype.convertDates = function(data) {
 DataSource.prototype.insertData = function(new_data, mode) {
 	var nd0 = new_data[0];
 	var data = this.data[mode];
-	var idx = 0;
-	for (var i=0; i<data.length; i++) {
-		if (data[i].time_end <= nd0.time_start) break;
-		idx++;
-	}
-	console.log( 'inserting', new_data.length
-		         , 'data element into the', mode, 'data at index', idx);
+	var idx = this.bisect(data, nd0.time_start);
+	//console.log( 'inserting', new_data.length
+	//	         , 'data element into the', mode, 'data at index', idx);
 	this.data[mode] = data.slice(0, idx).concat(new_data).concat(data.slice(idx));
-	//this.loaded_ivs[mode].insert([ new_data[0].time_start
-	//	                           , new_data[new_data.length-1].time_end]);
 }
 
 function PlotData(options) {
@@ -88,16 +87,3 @@ function PlotData(options) {
 	this.mode = options.mode || 'vwap';
 	this.group_by = options.group_by || '1min';
 }
-
-// /// Pass ex, pair and querystring options in options.
-// function loadData(options, user_data, callback) {
-// 	var url = 'http://localhost:3000/api/trades/'+options.ex+'/'+options.pair;
-// 	var qs = [];
-// 	for (var key in options) {
-// 		if (key !== 'ex' && key !== 'pair') qs.push(key+'='+options[key]);
-// 	}
-// 	qs.push('limit=1000');
-// 	if (qs.length > 0) url += '?' + qs.join('&');
-// 	console.log(url);
-// 	d3.json(url, function(d) { callback(d, user_data) });
-// }
