@@ -1,16 +1,17 @@
 <!doctype html>
 <meta charset="utf-8">
 <title>cc-client</title>
-<script src="libs/d3/d3.min.js"></script>
+<script src="../libs/d3/d3.min.js"></script>
 <script src="tools.js"></script>
 <script src="interval-list.js"></script>
 <script src="data-source.js"></script>
 <script src="vol-plot.js"></script>
 <script src="price-plot.js"></script>
 <script src="main-plot.js"></script>
+<script src="main.js"></script>
 <link rel="stylesheet" href="plot.css"/>
-<body>
-<script>
+<body onload="init('http://s1.marginsoftware.de:3000')">
+<!-- <script>
 
 var plots = [];
 
@@ -109,3 +110,4 @@ function update() {
 }
 
 </script>
+ -->

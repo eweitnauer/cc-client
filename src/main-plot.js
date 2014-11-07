@@ -2,8 +2,8 @@ var MainPlot = function() {
   var label        // label text of the plot, e.g. "USB / BTC"
      ,container    // html parent element of the plot
      ,label_el     // label element
-     ,height=200   // plot height without margin
-     ,margin = {top: 10, right: 60, bottom: 10, left: 10, between: 35}
+     ,height=300   // plot height without margin
+     ,margin = {top: 10, right: 70, bottom: 10, left: 10, between: 35}
      ,left_col     // left column element
      ,right_col    // right column element
      ,svg          // svg element for the plot
@@ -140,7 +140,7 @@ var MainPlot = function() {
     var layer_data = [], count = 0;
 
     function callback(id, data) {
-      layer_data.push({id: id, data: data});
+      if (id) layer_data.push({id: id, data: data});
       if (++count == sources.length) {
         plot.update_x_axis(250);
         if (update_prices) price_plot.data_layers(layer_data, 250);
@@ -149,7 +149,7 @@ var MainPlot = function() {
     }
 
     sources.forEach(function(source) {
-      if (!source.active) callback(source.idx, []);
+      if (!source.active) callback();
       else source.loadData(data_interval, int_mode, function(data) {
         callback(source.ex, data);
       })
@@ -199,7 +199,7 @@ var MainPlot = function() {
   }
 
   function dragend() {
-    //ruler_el.attr('display', 'auto');
+    ruler_el.attr('display', 'auto');
     plot.update();
   }
 
@@ -209,8 +209,6 @@ var MainPlot = function() {
       .origin(function(d) { return {x: 0, y: 0} })
       .on("drag", dragmove)
       .on("dragend", dragend);
-
-    container.call(drag);
 
     right_col = container.append('div') // do this first of fixed-fluid layout
       .classed('right-col-wrapper', true)
@@ -269,10 +267,12 @@ var MainPlot = function() {
       .attr({width: '100%', height: height + margin.top + margin.bottom + margin.between});
     svgg = svg
       .append('g')
-      .attr("transform", "translate(" + margin.left + "," + margin.top + ")")
-      .style('pointer-events', 'bounding-box')
+      .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+    svg.append('rect')
+      .style({fill: 'none', stroke: 'none', 'pointer-events': 'all'})
+      .attr({width: '100%', height: '100%'})
       .on('mousemove', function() {
-        var pos = d3.mouse(this);
+        var pos = d3.mouse(svgg.node());
         var t = x.invert(pos[0]-tx);
         ruler_el.attr('transform', 'translate(' + (pos[0]-0.5) + ',0)');
         ruler_text_el.text(time_formatter(t));
@@ -283,6 +283,7 @@ var MainPlot = function() {
       .on('mouseenter', function() {
         ruler_el.attr('display', 'auto');
       })
+      .call(drag);
 
     x_axis = d3.svg.axis()
       .scale(x)

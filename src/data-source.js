@@ -1,4 +1,4 @@
-function DataSource(path) {
+function DataSource(path, server_url) {
 	var strs = path.split('/');
 	this.ex = strs[0];
 	this.pair = strs[1];
@@ -9,6 +9,7 @@ function DataSource(path) {
 	this.loading = false; // true while requesting data from the db
 	                      // use to avoid several concurrent requests
 	this.bisect = d3.bisector(function(d) { return d.time_end }).right;
+	this.server_url = server_url || 'http://localhost:3000';
 }
 
 /// Call with, e.g. ([t0, t1], '1min', fn) to get fn called with an array of data.
@@ -43,22 +44,26 @@ DataSource.prototype.getDataFromCache = function(interval, mode, callback) {
 
 /// Gets data from the server, inserts it into the cache and calls the callback.
 DataSource.prototype.queryDataFromServer = function(interval, mode, callback) {
-	var url = 'http://localhost:3000/api/trades/'+this.ex+'/'+this.pair;
-	url += "?limit=200&group_by="+mode+"&time="+interval[0]+"&time_end="+interval[1];
-	//console.log('requesting data from server:', url);
+	var limit = 200;
+	var url = this.server_url + '/api/trades/'+this.ex+'/'+this.pair;
+	url += "?limit="+limit+"&group_by="+mode+"&time="+interval[0]+"&time_end="+interval[1];
 	var self = this;
+	console.log('query from server:', interval);
 	d3.json(url, function(d) {
-		if (d.length === 200) {
-			throw "more data on the server for this interval -- handle this!"; // FIXME
+		console.log('got', (d && d.length), 'data points from the server');
+		if (!d || d.length === 0) {
+			callback();
+			return;
+		}
+		self.convertDates(d);
+		d.sort(function(a,b) {return -b.time_start+a.time_start});
+		self.insertData(d, mode);
+		if (d.length === limit) {
+			console.info("more data on the server for this interval...");
+			self.loaded_ivs[mode].insert([d[0].time_start, interval[1]]);
+			self.queryDataFromServer([interval[0], d[0].time_start], mode, callback);
 		} else {
 			self.loaded_ivs[mode].insert(interval);
-			console.log('got', d.length, 'data points from the server');
-			if (!d || d.length === 0) {
-				//console.log('got empty data for', url);
-			} else {
-				self.convertDates(d);
-				self.insertData(d, mode);
-			}
 			callback();
 		}
 	});

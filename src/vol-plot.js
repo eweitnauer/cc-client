@@ -108,14 +108,6 @@ var VolumePlot = function() {
     content_el = container.append('g')
       .attr('clip-path', 'url(#clip_'+id+')')
       .append('g');
-
-    vwap_line = d3.svg.line()
-      .y(function(d) {
-        return y(d.vwap)
-      })
-      .x(function(d) {
-        return x(((+d.time_start)+(+d.time_end))/2)
-      });
   }
 
   plot.update = function(duration) {
@@ -198,7 +190,7 @@ var VolumePlot = function() {
       .attr("x", mar)
       .attr("width", w)
       .attr("y", function (d) { return Math.min(y(d.price_start), y(d.price_end)) })
-      .attr("height", function (d) { return Math.abs(-y(d.price_start)+y(d.price_end)) })
+      .attr("height", function (d) { return Math.max(0.5, Math.abs(-y(d.price_start)+y(d.price_end))) })
       .style('fill', function(d) { return (d.price_start < d.price_end) ? '#64FF64' : '#FF6464' })
       .style('stroke', 'black');
 
@@ -210,12 +202,12 @@ var VolumePlot = function() {
       .attr("y2", function (d) { return y(d.price_max) })
     ts.select('rect')
       .attr("y", function (d) { return Math.min(y(d.price_start), y(d.price_end)) })
-      .attr("height", function (d) { return Math.abs(-y(d.price_start)+y(d.price_end)) })
+      .attr("height", function (d) { return Math.max(0.5, Math.abs(-y(d.price_start)+y(d.price_end))) })
 
     box.exit().remove();
   }
 
-  plot.update_vwap_layer = function(container, layer, duration) {
+  plot.update_vwap_layer_single_path = function(container, layer, duration) {
     // and create & update the box charts
     var color = color_scale(layer.id);
 
@@ -253,12 +245,67 @@ var VolumePlot = function() {
     path.exit().remove();
   }
 
+  plot.set_vwap_line = function(sel) {
+    sel
+      .style('display', function(d) {
+        var dt = d[1].time_start - d[0].time_start;
+        var len = d[0].time_end - d[0].time_start;
+        return (dt <= 3*len) ? 'auto' : 'none'
+      })
+      .attr('x1', function(d) { return x(((+d[0].time_start)+(+d[0].time_end))/2) })
+      .attr('y1', function(d) { return y(d[0].vwap) })
+      .attr('x2', function(d) { return x(((+d[1].time_start)+(+d[1].time_end))/2) })
+      .attr('y2', function(d) { return y(d[1].vwap) });
+  }
+
+  plot.update_vwap_layer = function(container, layer, duration) {
+    // and create & update the box charts
+    var color = color_scale(layer.id);
+
+    var circles = container.selectAll('circle.vwap')
+        .data(layer.data, function(d) { return d._id });
+    circles.enter()
+      .append('circle')
+      .classed('vwap', true)
+      .style('fill', color)
+      .attr('r', 1.5);
+
+    var lines = container.selectAll("line.vwap")
+        .data(d3.pairs(layer.data), function(d) { return d[0]._id });
+    lines.enter()
+        .append('line')
+        .classed('vwap', true)
+        .style('fill', 'none')
+        .call(this.set_vwap_line)
+        .style('stroke', color);
+    // if we had an x-shift, handle it first without animation here (has to be
+    // animated through a translate of the path)
+    if (duration > 0) {
+      var dom = y.domain();
+      if (last_dom) y.domain(last_dom);
+      lines.call(this.set_vwap_line);
+      circles.attr('cx', function(d) { return x(((+d.time_start)+(+d.time_end))/2) })
+        .attr('cy', function(d) { return y(d.vwap) })
+      y.domain(dom);
+    }
+    // now animate any y-shift from rescaling
+    circles.transition().duration(duration)
+      .attr('cx', function(d) { return x(((+d.time_start)+(+d.time_end))/2) })
+      .attr('cy', function(d) { return y(d.vwap) })
+    circles.exit().remove();
+    lines.transition().duration(duration)
+      .call(this.set_vwap_line);
+    lines.exit().remove();
+  }
+
   // Rescale y-axis if the data is out of range or if the it takes less than
   // 50% of the space. Only scales according to the part of the data that is
   // currently visible.
   plot.scale_y_axis = function(duration) {
     var mins = [], maxs = [];
     var max = d3.max(data_layers, function(layer) {
+      console.log(layer);
+      //if (!layer.active) return;
       var idx0 = bisect_end(layer.data, x.domain()[0])
          ,idx1 = bisect_start(layer.data, x.domain()[1], idx0)
          ,data = layer.data.filter(function(d, idx) { return idx >= idx0 && idx < idx1});
