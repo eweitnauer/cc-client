@@ -304,8 +304,6 @@ var VolumePlot = function() {
   plot.scale_y_axis = function(duration) {
     var mins = [], maxs = [];
     var max = d3.max(data_layers, function(layer) {
-      console.log(layer);
-      //if (!layer.active) return;
       var idx0 = bisect_end(layer.data, x.domain()[0])
          ,idx1 = bisect_start(layer.data, x.domain()[1], idx0)
          ,data = layer.data.filter(function(d, idx) { return idx >= idx0 && idx < idx1});

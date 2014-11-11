@@ -60,11 +60,16 @@ var MainPlot = function() {
     return (svg ? svg.node().getBoundingClientRect().width - margin.left - margin.right : 0);
   }
 
+  plot.dataSources = function(arg) {
+    if (arguments.length === 0) return sources;
+    this.sources = arg;
+    return this;
+  }
+
   plot.addDataSource = function(source, active) {
     if (typeof(active) === 'undefined') active = true;
     sources.push(source);
     source.active = active;
-    source.idx = sources.length-1;
     return this;
   }
 

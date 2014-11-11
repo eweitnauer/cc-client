@@ -12,7 +12,7 @@ CCClient.init = function(server_url) {
 			for (var exchange in exchanges) {
 				var pairs = exchanges[exchange];
 				for (var i=0; i<pairs.length; i++) {
-					if (pairs[i] !== 'btc_usd') continue;
+					//if (pairs[i] !== 'btc_usd') continue;
 				  addServerPair(pairs[i], exchange);
 				}
 			}
@@ -25,7 +25,29 @@ CCClient.init = function(server_url) {
 				}
 				plots.push(plot);
 			}
-			callback();
+			sortPlots(callback);
+		});
+	}
+
+	function sortPlots(callback) {
+		var N = 0;
+		plots.forEach(function(plot) { N += plot.dataSources().length });
+
+		function collectResults(plot, ds, count) {
+			if (plot.tradesCount) plot.tradesCount += count;
+			else plot.tradesCount = count;
+			if (--N === 0) {
+				plots.sort(function(p1, p2) { return p2.tradesCount - p1.tradesCount });
+				callback();
+			}
+		}
+
+		plots.forEach(function(plot) {
+			plot.dataSources().forEach(function(ds) {
+			  ds.queryTradeCountFromServer(function(count) {
+			  	collectResults(plot, ds, count);
+			  });
+			});
 		});
 	}
 

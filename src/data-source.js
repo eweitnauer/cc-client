@@ -48,9 +48,9 @@ DataSource.prototype.queryDataFromServer = function(interval, mode, callback) {
 	var url = this.server_url + '/api/trades/'+this.ex+'/'+this.pair;
 	url += "?limit="+limit+"&group_by="+mode+"&time="+interval[0]+"&time_end="+interval[1];
 	var self = this;
-	console.log('query from server:', interval);
+	//console.log('query from server:', interval);
 	d3.json(url, function(d) {
-		console.log('got', (d && d.length), 'data points from the server');
+		//console.log('got', (d && d.length), 'data points from the server');
 		if (!d || d.length === 0) {
 			callback();
 			return;
@@ -67,6 +67,13 @@ DataSource.prototype.queryDataFromServer = function(interval, mode, callback) {
 			callback();
 		}
 	});
+}
+
+/// Gets number of trades from the server.
+DataSource.prototype.queryTradeCountFromServer = function(callback) {
+	var url = this.server_url + '/api/trades/'+this.ex+'/'+this.pair;
+	url += '?count=1';
+	d3.json(url, callback);
 }
 
 DataSource.prototype.convertDates = function(data) {

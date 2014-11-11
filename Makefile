@@ -27,4 +27,12 @@ test:
 	  --require should \
 	  --recursive
 
+install: cc-client.min.js
+	rsync -r -a -v -e "ssh" --delete \
+	  cc-client.min.js \
+	  examples/index.html \
+	  examples/plot.css \
+	  libs/d3/d3.min.js \
+	  root@graspingmath.com:/srv/www/cryptocurr.org/docs/client
+
 .PHONY: test

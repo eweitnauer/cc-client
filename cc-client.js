@@ -123,9 +123,9 @@ DataSource.prototype.queryDataFromServer = function(interval, mode, callback) {
 	var url = this.server_url + '/api/trades/'+this.ex+'/'+this.pair;
 	url += "?limit="+limit+"&group_by="+mode+"&time="+interval[0]+"&time_end="+interval[1];
 	var self = this;
-	console.log('query from server:', interval);
+	//console.log('query from server:', interval);
 	d3.json(url, function(d) {
-		console.log('got', (d && d.length), 'data points from the server');
+		//console.log('got', (d && d.length), 'data points from the server');
 		if (!d || d.length === 0) {
 			callback();
 			return;
@@ -142,6 +142,13 @@ DataSource.prototype.queryDataFromServer = function(interval, mode, callback) {
 			callback();
 		}
 	});
+}
+
+/// Gets number of trades from the server.
+DataSource.prototype.queryTradeCountFromServer = function(callback) {
+	var url = this.server_url + '/api/trades/'+this.ex+'/'+this.pair;
+	url += '?count=1';
+	d3.json(url, callback);
 }
 
 DataSource.prototype.convertDates = function(data) {
@@ -473,8 +480,6 @@ var VolumePlot = function() {
   plot.scale_y_axis = function(duration) {
     var mins = [], maxs = [];
     var max = d3.max(data_layers, function(layer) {
-      console.log(layer);
-      //if (!layer.active) return;
       var idx0 = bisect_end(layer.data, x.domain()[0])
          ,idx1 = bisect_start(layer.data, x.domain()[1], idx0)
          ,data = layer.data.filter(function(d, idx) { return idx >= idx0 && idx < idx1});
@@ -588,11 +593,16 @@ var MainPlot = function() {
     return (svg ? svg.node().getBoundingClientRect().width - margin.left - margin.right : 0);
   }
 
+  plot.dataSources = function(arg) {
+    if (arguments.length === 0) return sources;
+    this.sources = arg;
+    return this;
+  }
+
   plot.addDataSource = function(source, active) {
     if (typeof(active) === 'undefined') active = true;
     sources.push(source);
     source.active = active;
-    source.idx = sources.length-1;
     return this;
   }
 
@@ -914,7 +924,7 @@ CCClient.init = function(server_url) {
 			for (var exchange in exchanges) {
 				var pairs = exchanges[exchange];
 				for (var i=0; i<pairs.length; i++) {
-					if (pairs[i] !== 'btc_usd') continue;
+					//if (pairs[i] !== 'btc_usd') continue;
 				  addServerPair(pairs[i], exchange);
 				}
 			}
@@ -927,7 +937,29 @@ CCClient.init = function(server_url) {
 				}
 				plots.push(plot);
 			}
-			callback();
+			sortPlots(callback);
+		});
+	}
+
+	function sortPlots(callback) {
+		var N = 0;
+		plots.forEach(function(plot) { N += plot.dataSources().length });
+
+		function collectResults(plot, ds, count) {
+			if (plot.tradesCount) plot.tradesCount += count;
+			else plot.tradesCount = count;
+			if (--N === 0) {
+				plots.sort(function(p1, p2) { return p2.tradesCount - p1.tradesCount });
+				callback();
+			}
+		}
+
+		plots.forEach(function(plot) {
+			plot.dataSources().forEach(function(ds) {
+			  ds.queryTradeCountFromServer(function(count) {
+			  	collectResults(plot, ds, count);
+			  });
+			});
 		});
 	}
 
