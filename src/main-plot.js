@@ -2,13 +2,14 @@ var MainPlot = function() {
   var label        // label text of the plot, e.g. "USB / BTC"
      ,container    // html parent element of the plot
      ,label_el     // label element
-     ,height=300   // plot height without margin
+     ,height=400   // plot height without margin
      ,margin = {top: 10, right: 70, bottom: 10, left: 10, between: 35}
      ,left_col     // left column element
      ,right_col    // right column element
      ,svg          // svg element for the plot
      ,svgg         // g element holding all the content
-     ,sources = [] // array of DataSources
+     ,sources = [] // array of current DataSources
+     ,pair_sources = [] // array of { name: string, sources: [DataSource]}
      ,time_end = null // show data until this time, can be a number or 'now'
      ,data_margin = 0.75 // request & render more than visible (factor)
      ,auto_advance = true // always show the latest time interval
@@ -19,7 +20,7 @@ var MainPlot = function() {
      ,time_map = { '1min': 1000*60, '5min': 1000*60*5, '30min': 1000*60*30
                  , '4h': 1000*3600*4, '1d': 1000*3600*24 }
      ,candle_width = 10
-     ,legend_lines
+     ,legend_el, legend_lines
      ,x = d3.time.scale()
      ,x_axis, x_axis_el
      ,color = d3.scale.category10()
@@ -60,9 +61,26 @@ var MainPlot = function() {
     return (svg ? svg.node().getBoundingClientRect().width - margin.left - margin.right : 0);
   }
 
+  plot.pairSources = function(arg) {
+    if (arguments.length === 0) return pair_sources;
+    pair_sources = arg;
+    plot.setPairByIndex(0);
+    return this;
+  }
+
+  plot.setPairByIndex = function(idx) {
+    if (idx < 0 || idx >= pair_sources.length) return;
+    var tmp = pair_sources[0];
+    pair_sources[0] = pair_sources[idx];
+    pair_sources[idx] = tmp;
+    plot.label(pair_sources[0].name);
+    plot.dataSources(pair_sources[0].sources);
+    return this;
+  }
+
   plot.dataSources = function(arg) {
     if (arguments.length === 0) return sources;
-    this.sources = arg;
+    sources = arg;
     return this;
   }
 
@@ -76,7 +94,7 @@ var MainPlot = function() {
   plot.label = function(arg) {
     if (arguments.length === 0) return label;
     label = arg;
-    if (label_el) label_el.text(label);
+    if (label_el) label_el.select('span').text(label);
     return this;
   }
 
@@ -221,7 +239,13 @@ var MainPlot = function() {
       .classed('right-col', true);
     left_col = container.append('div')
       .classed('left-col', true);
-    label_el = left_col.append('h2').text(label);
+    label_el = left_col.append('h2')
+      .on('click', plot.choosePair);
+    label_el.append('span').text(label);
+    label_el.append('svg').attr({width: 21, height: 21})
+            .append('path').attr('d', 'M15,16 L10,11 M15,16 L20,11')
+            .style({stroke: 'black', fill: 'none'});
+
     var int_sel = left_col.append('div')
       .classed('interval-selection', true)
       .selectAll('div.selector')
@@ -252,21 +276,9 @@ var MainPlot = function() {
         plot.plot_type(d);
       });
 
-    legend_lines = left_col.append('div')
-      .classed('legend', true)
-      .selectAll('div.legend-item')
-      .data(sources)
-      .enter()
-      .append('div')
-      .classed('legend-item', true);
-    legend_lines.append('span')
-      .classed('label', true)
-      .text(function(d) { return d.ex })
-      .on('click', plot.toggleSource);
-    legend_lines.append('span')
-      .classed('marker', true)
-      .on('click', plot.toggleSource);
-    plot.updateLegend();
+    legend_el = left_col.append('div')
+      .classed('legend', true);
+    plot.setupLegend();
 
     svg = right_col.append('svg')
       .attr({width: '100%', height: height + margin.top + margin.bottom + margin.between});
@@ -318,6 +330,39 @@ var MainPlot = function() {
     ruler_text_el = ruler_el.append('text')
       .classed('ruler-text', true)
       .attr({ x: -46, y: height_top()+margin.between/2+5 });
+  }
+
+  plot.setupLegend = function() {
+    legend_el.selectAll('div').remove();
+    legend_lines = legend_el.selectAll('div.legend-item')
+      .data(sources);
+    var enter = legend_lines.enter()
+      .append('div')
+      .classed('legend-item', true);
+    enter.append('span')
+      .classed('label', true)
+      .text(function(d) { return d.ex })
+      .on('click', plot.toggleSource);
+    enter.append('span')
+      .classed('marker', true)
+      .on('click', plot.toggleSource);
+    plot.updateLegend();
+  }
+
+  plot.choosePair = function() {
+    label_el.insert('div').classed('on_top', true)
+      .selectAll('span')
+      .data(pair_sources)
+      .enter()
+      .append('span')
+      .text(function(d) { return d.name })
+      .on('click', function(d, i) {
+        d3.event.stopPropagation();
+        label_el.select('div.on_top').remove();
+        plot.setPairByIndex(i);
+        plot.setupLegend();
+        plot.update();
+      });
   }
 
   plot.toggleSource = function(source) {

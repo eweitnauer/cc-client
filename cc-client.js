@@ -85,6 +85,7 @@ function DataSource(path, server_url) {
 	                      // use to avoid several concurrent requests
 	this.bisect = d3.bisector(function(d) { return d.time_end }).right;
 	this.server_url = server_url || 'http://localhost:3000';
+	this.active = true;
 }
 
 /// Call with, e.g. ([t0, t1], '1min', fn) to get fn called with an array of data.
@@ -535,13 +536,14 @@ var MainPlot = function() {
   var label        // label text of the plot, e.g. "USB / BTC"
      ,container    // html parent element of the plot
      ,label_el     // label element
-     ,height=300   // plot height without margin
+     ,height=400   // plot height without margin
      ,margin = {top: 10, right: 70, bottom: 10, left: 10, between: 35}
      ,left_col     // left column element
      ,right_col    // right column element
      ,svg          // svg element for the plot
      ,svgg         // g element holding all the content
-     ,sources = [] // array of DataSources
+     ,sources = [] // array of current DataSources
+     ,pair_sources = [] // array of { name: string, sources: [DataSource]}
      ,time_end = null // show data until this time, can be a number or 'now'
      ,data_margin = 0.75 // request & render more than visible (factor)
      ,auto_advance = true // always show the latest time interval
@@ -552,7 +554,7 @@ var MainPlot = function() {
      ,time_map = { '1min': 1000*60, '5min': 1000*60*5, '30min': 1000*60*30
                  , '4h': 1000*3600*4, '1d': 1000*3600*24 }
      ,candle_width = 10
-     ,legend_lines
+     ,legend_el, legend_lines
      ,x = d3.time.scale()
      ,x_axis, x_axis_el
      ,color = d3.scale.category10()
@@ -593,9 +595,26 @@ var MainPlot = function() {
     return (svg ? svg.node().getBoundingClientRect().width - margin.left - margin.right : 0);
   }
 
+  plot.pairSources = function(arg) {
+    if (arguments.length === 0) return pair_sources;
+    pair_sources = arg;
+    plot.setPairByIndex(0);
+    return this;
+  }
+
+  plot.setPairByIndex = function(idx) {
+    if (idx < 0 || idx >= pair_sources.length) return;
+    var tmp = pair_sources[0];
+    pair_sources[0] = pair_sources[idx];
+    pair_sources[idx] = tmp;
+    plot.label(pair_sources[0].name);
+    plot.dataSources(pair_sources[0].sources);
+    return this;
+  }
+
   plot.dataSources = function(arg) {
     if (arguments.length === 0) return sources;
-    this.sources = arg;
+    sources = arg;
     return this;
   }
 
@@ -609,7 +628,7 @@ var MainPlot = function() {
   plot.label = function(arg) {
     if (arguments.length === 0) return label;
     label = arg;
-    if (label_el) label_el.text(label);
+    if (label_el) label_el.select('span').text(label);
     return this;
   }
 
@@ -754,7 +773,13 @@ var MainPlot = function() {
       .classed('right-col', true);
     left_col = container.append('div')
       .classed('left-col', true);
-    label_el = left_col.append('h2').text(label);
+    label_el = left_col.append('h2')
+      .on('click', plot.choosePair);
+    label_el.append('span').text(label);
+    label_el.append('svg').attr({width: 21, height: 21})
+            .append('path').attr('d', 'M15,16 L10,11 M15,16 L20,11')
+            .style({stroke: 'black', fill: 'none'});
+
     var int_sel = left_col.append('div')
       .classed('interval-selection', true)
       .selectAll('div.selector')
@@ -785,21 +810,9 @@ var MainPlot = function() {
         plot.plot_type(d);
       });
 
-    legend_lines = left_col.append('div')
-      .classed('legend', true)
-      .selectAll('div.legend-item')
-      .data(sources)
-      .enter()
-      .append('div')
-      .classed('legend-item', true);
-    legend_lines.append('span')
-      .classed('label', true)
-      .text(function(d) { return d.ex })
-      .on('click', plot.toggleSource);
-    legend_lines.append('span')
-      .classed('marker', true)
-      .on('click', plot.toggleSource);
-    plot.updateLegend();
+    legend_el = left_col.append('div')
+      .classed('legend', true);
+    plot.setupLegend();
 
     svg = right_col.append('svg')
       .attr({width: '100%', height: height + margin.top + margin.bottom + margin.between});
@@ -851,6 +864,39 @@ var MainPlot = function() {
     ruler_text_el = ruler_el.append('text')
       .classed('ruler-text', true)
       .attr({ x: -46, y: height_top()+margin.between/2+5 });
+  }
+
+  plot.setupLegend = function() {
+    legend_el.selectAll('div').remove();
+    legend_lines = legend_el.selectAll('div.legend-item')
+      .data(sources);
+    var enter = legend_lines.enter()
+      .append('div')
+      .classed('legend-item', true);
+    enter.append('span')
+      .classed('label', true)
+      .text(function(d) { return d.ex })
+      .on('click', plot.toggleSource);
+    enter.append('span')
+      .classed('marker', true)
+      .on('click', plot.toggleSource);
+    plot.updateLegend();
+  }
+
+  plot.choosePair = function() {
+    label_el.insert('div').classed('on_top', true)
+      .selectAll('span')
+      .data(pair_sources)
+      .enter()
+      .append('span')
+      .text(function(d) { return d.name })
+      .on('click', function(d, i) {
+        d3.event.stopPropagation();
+        label_el.select('div.on_top').remove();
+        plot.setPairByIndex(i);
+        plot.setupLegend();
+        plot.update();
+      });
   }
 
   plot.toggleSource = function(source) {
@@ -912,9 +958,10 @@ var MainPlot = function() {
 }
 CCClient = {};
 CCClient.init = function(server_url) {
-	var plots = [];
+	plots = [];
 
-	var server_pairs = {}; // normalized pair names -> { ex, pair }
+	pair2source = {}; // normalized currency pair names -> [DataSource]
+	pair_sources = []; // [{pair_name: string, sources: [DataSource]}]
 
 	queryExchanges(initializePlots);
 
@@ -928,36 +975,37 @@ CCClient.init = function(server_url) {
 				  addServerPair(pairs[i], exchange);
 				}
 			}
-			console.log(server_pairs);
-			for (var key in server_pairs) {
-				var plot = MainPlot().label(key);
-				for (var i=0; i<server_pairs[key].length; i++) {
-					var sp = server_pairs[key][i];
-					plot.addDataSource(new DataSource(sp.ex+'/'+sp.pair, server_url), true);
-				}
-				plots.push(plot);
+
+			for (var name in pair2source) {
+				var sources = pair2source[name].map(function(pair_ex) {
+					return new DataSource(pair_ex.ex+'/'+pair_ex.pair, server_url);
+				});
+				pair_sources.push({sources: sources, name: name});
 			}
-			sortPlots(callback);
+			sortPairSources(function() {
+				plots.push(MainPlot().pairSources(pair_sources));
+				callback();
+			});
 		});
 	}
 
-	function sortPlots(callback) {
+	function sortPairSources(callback) {
 		var N = 0;
-		plots.forEach(function(plot) { N += plot.dataSources().length });
+		pair_sources.forEach(function(pair_source) { N += pair_source.sources.length });
 
-		function collectResults(plot, ds, count) {
-			if (plot.tradesCount) plot.tradesCount += count;
-			else plot.tradesCount = count;
+		function collectResults(pair_sources, ds, count) {
+			if (pair_sources.tradesCount) pair_sources.tradesCount += count;
+			else pair_sources.tradesCount = count;
 			if (--N === 0) {
-				plots.sort(function(p1, p2) { return p2.tradesCount - p1.tradesCount });
+				pair_sources.sort(function(p1, p2) { return p2.tradesCount - p1.tradesCount });
 				callback();
 			}
 		}
 
-		plots.forEach(function(plot) {
-			plot.dataSources().forEach(function(ds) {
+		pair_sources.forEach(function(pair_source) {
+			pair_source.sources.forEach(function(ds) {
 			  ds.queryTradeCountFromServer(function(count) {
-			  	collectResults(plot, ds, count);
+			  	collectResults(pair_sources, ds, count);
 			  });
 			});
 		});
@@ -980,10 +1028,10 @@ CCClient.init = function(server_url) {
 		var name = normalizePairName(pair);
 		var sname = normalizePairNameSwapped(pair);
 		var pair_name;
-		if ((name in server_pairs) || !(sname in server_pairs)) pair_name = name;
+		if ((name in pair2source) || !(sname in pair2source)) pair_name = name;
 		else pair_name = sname;
-		server_pairs[pair_name] = server_pairs[pair_name] || [];
-		server_pairs[pair_name].push({ex: ex, pair: pair});
+		pair2source[pair_name] = pair2source[pair_name] || [];
+		pair2source[pair_name].push({ex: ex, pair: pair});
 	}
 
 	function initializePlots() {

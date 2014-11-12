@@ -10,6 +10,7 @@ function DataSource(path, server_url) {
 	                      // use to avoid several concurrent requests
 	this.bisect = d3.bisector(function(d) { return d.time_end }).right;
 	this.server_url = server_url || 'http://localhost:3000';
+	this.active = true;
 }
 
 /// Call with, e.g. ([t0, t1], '1min', fn) to get fn called with an array of data.

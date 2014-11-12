@@ -106,7 +106,43 @@ div.selector.selected {
 .plot h2 {
   font-weight: 300;
   margin-right: 20px;
-  text-align: right;
+  text-align: left;
+  position: relative;
+  cursor: pointer;
+}
+
+.plot h2 .on_top {
+  width: 377px;
+  position: absolute;
+  background: rgba(255,255,255,0.9);
+  border: 1px solid silver;
+  top: -11px;
+  left: -10px;
+  padding: 7px 2px;
+}
+
+.plot h2 .on_top span:first-child {
+  width: 362px;
+  font-size: 24px;
+  display: block;
+  text-align: left;
+}
+
+.plot h2 .on_top span {
+  font-size: 12px;
+  margin: 0 4px;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 2px;
+  padding: 2px;
+  display: inline-block;
+  width: 80px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.plot h2 .on_top span:hover {
+  background: whitesmoke;
 }
 
 .left-col {

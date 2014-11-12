@@ -1,8 +1,9 @@
 CCClient = {};
 CCClient.init = function(server_url) {
-	var plots = [];
+	plots = [];
 
-	var server_pairs = {}; // normalized pair names -> { ex, pair }
+	pair2source = {}; // normalized currency pair names -> [DataSource]
+	pair_sources = []; // [{pair_name: string, sources: [DataSource]}]
 
 	queryExchanges(initializePlots);
 
@@ -16,36 +17,37 @@ CCClient.init = function(server_url) {
 				  addServerPair(pairs[i], exchange);
 				}
 			}
-			console.log(server_pairs);
-			for (var key in server_pairs) {
-				var plot = MainPlot().label(key);
-				for (var i=0; i<server_pairs[key].length; i++) {
-					var sp = server_pairs[key][i];
-					plot.addDataSource(new DataSource(sp.ex+'/'+sp.pair, server_url), true);
-				}
-				plots.push(plot);
+
+			for (var name in pair2source) {
+				var sources = pair2source[name].map(function(pair_ex) {
+					return new DataSource(pair_ex.ex+'/'+pair_ex.pair, server_url);
+				});
+				pair_sources.push({sources: sources, name: name});
 			}
-			sortPlots(callback);
+			sortPairSources(function() {
+				plots.push(MainPlot().pairSources(pair_sources));
+				callback();
+			});
 		});
 	}
 
-	function sortPlots(callback) {
+	function sortPairSources(callback) {
 		var N = 0;
-		plots.forEach(function(plot) { N += plot.dataSources().length });
+		pair_sources.forEach(function(pair_source) { N += pair_source.sources.length });
 
-		function collectResults(plot, ds, count) {
-			if (plot.tradesCount) plot.tradesCount += count;
-			else plot.tradesCount = count;
+		function collectResults(pair_sources, ds, count) {
+			if (pair_sources.tradesCount) pair_sources.tradesCount += count;
+			else pair_sources.tradesCount = count;
 			if (--N === 0) {
-				plots.sort(function(p1, p2) { return p2.tradesCount - p1.tradesCount });
+				pair_sources.sort(function(p1, p2) { return p2.tradesCount - p1.tradesCount });
 				callback();
 			}
 		}
 
-		plots.forEach(function(plot) {
-			plot.dataSources().forEach(function(ds) {
+		pair_sources.forEach(function(pair_source) {
+			pair_source.sources.forEach(function(ds) {
 			  ds.queryTradeCountFromServer(function(count) {
-			  	collectResults(plot, ds, count);
+			  	collectResults(pair_sources, ds, count);
 			  });
 			});
 		});
@@ -68,10 +70,10 @@ CCClient.init = function(server_url) {
 		var name = normalizePairName(pair);
 		var sname = normalizePairNameSwapped(pair);
 		var pair_name;
-		if ((name in server_pairs) || !(sname in server_pairs)) pair_name = name;
+		if ((name in pair2source) || !(sname in pair2source)) pair_name = name;
 		else pair_name = sname;
-		server_pairs[pair_name] = server_pairs[pair_name] || [];
-		server_pairs[pair_name].push({ex: ex, pair: pair});
+		pair2source[pair_name] = pair2source[pair_name] || [];
+		pair2source[pair_name].push({ex: ex, pair: pair});
 	}
 
 	function initializePlots() {
